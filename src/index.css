@@ -1,0 +1,51 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root {
+  color: #f9fafb;
+  background: #0b0f1a;
+  font-synthesis: none;
+  text-rendering: optimizeLegibility;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+html,
+body,
+#root {
+  min-height: 100%;
+}
+
+body {
+  @apply bg-bg font-sans text-text-primary;
+  margin: 0;
+  background-image:
+    radial-gradient(circle at top, rgba(99, 102, 241, 0.12), transparent 30%),
+    linear-gradient(180deg, rgba(255, 255, 255, 0.02), transparent 20%),
+    linear-gradient(#0b0f1a, #0b0f1a);
+}
+
+* {
+  scrollbar-width: thin;
+  scrollbar-color: rgba(156, 163, 175, 0.3) transparent;
+}
+
+*::-webkit-scrollbar {
+  width: 10px;
+  height: 10px;
+}
+
+*::-webkit-scrollbar-thumb {
+  background: rgba(156, 163, 175, 0.25);
+  border-radius: 999px;
+}
+
+.panel {
+  @apply rounded-3xl border border-white/5 bg-card shadow-panel;
+}
+
+.subtle-grid {
+  background-image: theme("backgroundImage.grid-fade");
+  background-size: 34px 34px;
+}
