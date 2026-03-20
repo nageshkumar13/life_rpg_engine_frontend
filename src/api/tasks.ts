@@ -1,279 +1,310 @@
-import { delay } from "@/api/delay";
-import { ACTIVE_DATE, DEMO_USER_ID } from "@/lib/session";
-import { db } from "@/mocks/db";
-import type { Task, TaskChunk, TodayPayload, TodayStats } from "@/types/models";
+import { loadHabitBoardItems } from "@/api/habits";
+import { apiRequest } from "@/api/client";
+import { getCurrentUser } from "@/api/users";
+import { getXpLogs } from "@/api/xp";
+import { ACTIVE_DATE } from "@/lib/session";
+import { addDays } from "@/lib/utils";
+import type { AnalyticsOverview, ScheduleWindow, Task, TaskChunk, TaskDayGroup, TodayPayload, TodayStats } from "@/types/models";
 
-function cloneChunk(chunk: TaskChunk): TaskChunk {
-  return { ...chunk };
-}
-
-function cloneTask(task: Task): Task {
-  return {
-    ...task,
-    chunks: task.chunks.map(cloneChunk),
-  };
-}
-
-function recalculateTask(task: Task) {
-  if (!task.chunks.length) {
-    task.completion_percentage = task.status === "DONE" ? 100 : 0;
-    return;
-  }
-
-  const doneCount = task.chunks.filter((chunk) => chunk.status === "DONE").length;
-  task.completion_percentage = Math.round((doneCount / task.chunks.length) * 100);
-
-  if (doneCount === task.chunks.length) {
-    task.status = "DONE";
-    task.completed_at = new Date().toISOString();
-  } else if (doneCount > 0 && task.status === "PLANNED") {
-    task.status = "ACTIVE";
-  }
-}
+const LEVEL_XP_STEP = 100;
 
 function levelProgressWindow(totalXp: number, level: number) {
-  const prevLevelFloor = Math.max(0, (level - 1) * 160);
-  const nextLevelFloor = level * 160;
+  const previousLevelFloor = Math.max(0, (level - 1) * LEVEL_XP_STEP);
+  const nextLevelFloor = level * LEVEL_XP_STEP;
 
   return {
-    level_xp: totalXp - prevLevelFloor,
-    next_level_xp: nextLevelFloor - prevLevelFloor,
+    level_xp: totalXp - previousLevelFloor,
+    next_level_xp: nextLevelFloor - previousLevelFloor,
   };
 }
 
-function buildTodayStats(date: string): TodayStats {
-  const focus_minutes = db.habitLogs
-    .filter((log) => log.user_id === DEMO_USER_ID && log.log_date === date && log.status === "COMPLETED")
-    .reduce((sum, log) => sum + log.actual_minutes, 0);
-  const today_xp = db.xpLogs
-    .filter((log) => log.user_id === DEMO_USER_ID && log.created_at.slice(0, 10) === date)
-    .reduce((sum, log) => sum + log.xp_delta, 0);
-  const totalTracked = db.tasks.filter((task) => task.user_id === DEMO_USER_ID && task.assigned_day === date).length + db.habitLogs.filter((log) => log.user_id === DEMO_USER_ID && log.log_date === date).length;
-  const completeTracked = db.tasks.filter((task) => task.user_id === DEMO_USER_ID && task.assigned_day === date && task.status === "DONE").length + db.habitLogs.filter((log) => log.user_id === DEMO_USER_ID && log.log_date === date && log.status === "COMPLETED").length;
-  const { level_xp, next_level_xp } = levelProgressWindow(db.user.total_xp, db.user.level);
+function buildTodayStats(input: {
+  date: string;
+  tasks: Task[];
+  habitItems: TodayPayload["habit_items"];
+  todayXp: number;
+  totalXp: number;
+  level: number;
+  currentStreak: number;
+  bestStreak: number;
+}): TodayStats {
+  const focusMinutes = input.habitItems
+    .filter((item) => item.log?.status === "COMPLETED")
+    .reduce((sum, item) => sum + (item.log?.actual_minutes ?? 0), 0);
+  const totalTracked = input.tasks.length + input.habitItems.length;
+  const completedTracked =
+    input.tasks.filter((task) => task.status === "DONE").length +
+    input.habitItems.filter((item) => item.log?.status === "COMPLETED").length;
+  const { level_xp, next_level_xp } = levelProgressWindow(input.totalXp, input.level);
 
   return {
-    date,
-    current_streak: db.user.current_streak,
-    best_streak: db.user.best_streak,
-    total_xp: db.user.total_xp,
-    current_level: db.user.level,
+    date: input.date,
+    current_streak: input.currentStreak,
+    best_streak: input.bestStreak,
+    total_xp: input.totalXp,
+    current_level: input.level,
     level_xp,
     next_level_xp,
-    focus_minutes,
-    today_xp,
-    daily_completion_ratio: totalTracked ? completeTracked / totalTracked : 0,
+    focus_minutes: focusMinutes,
+    today_xp: input.todayXp,
+    daily_completion_ratio: totalTracked ? completedTracked / totalTracked : 0,
+    completed_tracked_count: completedTracked,
+    total_tracked_count: totalTracked,
   };
 }
 
-export async function getToday(userId = DEMO_USER_ID, date = ACTIVE_DATE): Promise<TodayPayload> {
-  await delay();
+function buildTaskDayGroups(tasks: Task[], startDate: string, endDate: string): TaskDayGroup[] {
+  const groups: TaskDayGroup[] = [];
 
-  const tasks = db.tasks.filter((task) => task.user_id === userId && task.assigned_day === date);
-  const planned_tasks = tasks.filter((task) => task.status !== "DONE" && task.type !== "UNPLANNED").map(cloneTask);
-  const unplanned_tasks = tasks.filter((task) => task.status !== "DONE" && task.type === "UNPLANNED").map(cloneTask);
-  const completed_tasks = tasks.filter((task) => task.status === "DONE").map(cloneTask);
+  for (let cursor = startDate; cursor <= endDate; cursor = addDays(cursor, 1)) {
+    const dayTasks = tasks
+      .filter((task) => task.assigned_day === cursor)
+      .sort((left, right) => {
+        if (left.status === right.status) {
+          return left.created_at.localeCompare(right.created_at);
+        }
 
-  const habit_items = db.habits
-    .filter((habit) => habit.user_id === userId && habit.is_active)
-    .map((habit) => {
-      const log = db.habitLogs.find((entry) => entry.habit_id === habit.id && entry.log_date === date) ?? null;
-      const history = db.habitLogs.filter((entry) => entry.habit_id === habit.id);
-      const completedCount = history.filter((entry) => entry.status === "COMPLETED").length;
-      const totalMinutes = history.reduce((sum, entry) => sum + entry.actual_minutes, 0);
-      const totalXp = history.reduce((sum, entry) => sum + entry.xp_earned, 0);
+        if (left.status === "DONE") {
+          return 1;
+        }
 
-      return {
-        habit: { ...habit },
-        log: log ? { ...log } : null,
-        consistency_ratio: history.length ? completedCount / history.length : 0,
-        total_minutes: totalMinutes,
-        total_xp: totalXp,
-      };
+        if (right.status === "DONE") {
+          return -1;
+        }
+
+        return left.status.localeCompare(right.status);
+      });
+
+    if (!dayTasks.length) {
+      continue;
+    }
+
+    const completed_count = dayTasks.filter((task) => task.status === "DONE").length;
+
+    groups.push({
+      date: cursor,
+      tasks: dayTasks,
+      total_count: dayTasks.length,
+      completed_count,
+      remaining_count: dayTasks.length - completed_count,
     });
+  }
+
+  return groups;
+}
+
+function buildScheduleWindow(tasks: Task[], date: string): ScheduleWindow {
+  const startDate = addDays(date, -3);
+  const endDate = addDays(date, 7);
 
   return {
-    stats: buildTodayStats(date),
+    overdue: tasks.filter((task) => task.assigned_day < date && task.status !== "DONE" && task.status !== "MISSED"),
+    missed: tasks.filter((task) => task.assigned_day < date && task.status === "MISSED"),
+    day_groups: buildTaskDayGroups(tasks, startDate, endDate),
+    scheduled_later_count: tasks.filter((task) => task.assigned_day > date && task.status !== "DONE").length,
+  };
+}
+
+async function getXpDelta(work: () => Promise<Task>) {
+  const beforeUser = await getCurrentUser();
+  const task = await work();
+  const afterUser = await getCurrentUser();
+
+  return {
+    task,
+    xp_delta: Math.max(0, afterUser.total_xp - beforeUser.total_xp),
+  };
+}
+
+export async function fetchTasksForDate(date = ACTIVE_DATE) {
+  if (date === ACTIVE_DATE) {
+    const response = await apiRequest<{ items: Task[] }>("/tasks/today");
+    return response.items;
+  }
+
+  const response = await apiRequest<{ items: Task[] }>(`/tasks?assigned_day=${encodeURIComponent(date)}`);
+  return response.items;
+}
+
+export async function fetchTaskRange(startDate: string, endDate: string) {
+  const response = await apiRequest<{ items: Task[] }>(
+    `/tasks/range?start_day=${encodeURIComponent(startDate)}&end_day=${encodeURIComponent(endDate)}`,
+  );
+
+  return response.items;
+}
+
+export async function getToday(date = ACTIVE_DATE): Promise<TodayPayload> {
+  const rangeStart = addDays(date, -3);
+  const rangeEnd = addDays(date, 7);
+
+  const [user, tasks, rangeTasks, habitItems, xpLogs, analytics] = await Promise.all([
+    getCurrentUser(),
+    fetchTasksForDate(date),
+    fetchTaskRange(rangeStart, rangeEnd),
+    loadHabitBoardItems(date),
+    getXpLogs(),
+    apiRequest<AnalyticsOverview>("/analytics/overview"),
+  ]);
+  const todayXp = xpLogs
+    .filter((log) => log.created_at.slice(0, 10) === date)
+    .reduce((sum, log) => sum + log.xp_delta, 0);
+  const planned_tasks = tasks.filter((task) => task.status !== "DONE" && task.type !== "UNPLANNED");
+  const unplanned_tasks = tasks.filter((task) => task.status !== "DONE" && task.type === "UNPLANNED");
+  const completed_tasks = tasks.filter((task) => task.status === "DONE");
+
+  return {
+    stats: buildTodayStats({
+      date,
+      tasks,
+      habitItems,
+      todayXp,
+      totalXp: user.total_xp,
+      level: user.level,
+      currentStreak: analytics.streak_summary.current_streak,
+      bestStreak: Math.max(user.best_streak, analytics.streak_summary.best_streak),
+    }),
     planned_tasks,
     unplanned_tasks,
-    habit_items,
+    habit_items: habitItems,
     completed_tasks,
+    schedule_window: buildScheduleWindow(rangeTasks, date),
   };
 }
 
 export async function getTask(taskId: string) {
-  await delay();
-  const task = db.tasks.find((item) => item.id === taskId);
-
-  if (!task) {
-    throw new Error("Task not found");
-  }
-
-  return cloneTask(task);
+  return apiRequest<Task>(`/tasks/${taskId}`);
 }
 
 export async function advanceTask(taskId: string) {
-  await delay(150);
-  const task = db.tasks.find((item) => item.id === taskId);
+  const currentTask = await getTask(taskId);
 
-  if (!task) {
-    throw new Error("Task not found");
+  if (!currentTask.chunks.length && currentTask.status !== "DONE") {
+    return getXpDelta(() =>
+      apiRequest<Task>(`/tasks/${taskId}/done`, {
+        method: "POST",
+      }),
+    );
   }
 
-  let xp_delta = 0;
-
-  if (!task.chunks.length && (task.status === "PLANNED" || task.status === "ACTIVE")) {
-    task.status = "DONE";
-    task.completion_percentage = 100;
-    task.completed_at = new Date().toISOString();
-    xp_delta = Math.max(8, task.importance_score * 6);
-  } else if (task.chunks.length && task.status === "PLANNED") {
-    task.status = "ACTIVE";
-  } else if (task.chunks.length && task.chunks.every((chunk) => chunk.status === "DONE") && task.status !== "DONE") {
-    task.status = "DONE";
-    task.completed_at = new Date().toISOString();
-    xp_delta = Math.max(10, task.importance_score * 5);
+  if (currentTask.chunks.length && currentTask.status === "PLANNED") {
+    return getXpDelta(() =>
+      apiRequest<Task>(`/tasks/${taskId}/active`, {
+        method: "POST",
+      }),
+    );
   }
 
-  if (xp_delta > 0) {
-    db.user.total_xp += xp_delta;
-    db.xpLogs.unshift({
-      id: crypto.randomUUID(),
-      user_id: task.user_id,
-      source_type: "TASK",
-      source_id: task.id,
-      xp_delta,
-      reason: `Completed ${task.title}`,
-      created_at: new Date().toISOString(),
-    });
+  if (currentTask.chunks.length && currentTask.chunks.every((chunk) => chunk.status === "DONE") && currentTask.status !== "DONE") {
+    return getXpDelta(() =>
+      apiRequest<Task>(`/tasks/${taskId}/done`, {
+        method: "POST",
+      }),
+    );
   }
 
-  return { task: cloneTask(task), xp_delta };
+  return {
+    task: currentTask,
+    xp_delta: 0,
+  };
 }
 
-export async function addTask(input: Pick<Task, "title" | "description" | "estimated_minutes_total" | "type">) {
-  await delay(180);
-  const task: Task = {
-    id: crypto.randomUUID(),
-    user_id: DEMO_USER_ID,
-    title: input.title,
-    description: input.description,
-    type: input.type,
-    importance_score: input.type === "PLANNED" ? 4 : 2,
-    estimated_minutes_total: input.estimated_minutes_total,
-    assigned_day: ACTIVE_DATE,
-    status: "PLANNED",
-    completion_percentage: 0,
-    source_backlog_id: null,
-    created_at: new Date().toISOString(),
-    updated_at: new Date().toISOString(),
-    completed_at: null,
-    chunks: [],
-  };
+export async function addTask(input: Pick<Task, "title" | "description" | "estimated_minutes_total" | "type"> & { assigned_day?: string }) {
+  return apiRequest<Task>("/tasks", {
+    method: "POST",
+    body: {
+      title: input.title,
+      description: input.description,
+      type: input.type,
+      importance_score: input.type === "PLANNED" ? 4 : 2,
+      estimated_minutes_total: input.estimated_minutes_total,
+      assigned_day: input.assigned_day ?? ACTIVE_DATE,
+      source_backlog_id: null,
+    },
+  });
+}
 
-  db.tasks.unshift(task);
-  return cloneTask(task);
+export async function updateTask(
+  taskId: string,
+  input: Pick<Task, "title" | "description" | "estimated_minutes_total"> & { assigned_day: string },
+) {
+  return apiRequest<Task>(`/tasks/${taskId}`, {
+    method: "PATCH",
+    body: {
+      title: input.title,
+      description: input.description,
+      estimated_minutes_total: input.estimated_minutes_total,
+      assigned_day: input.assigned_day,
+    },
+  });
+}
+
+export async function deleteTask(taskId: string) {
+  await apiRequest<{ message: string }>(`/tasks/${taskId}`, {
+    method: "DELETE",
+  });
+
+  return taskId;
 }
 
 export async function addChunk(taskId: string, input: Pick<TaskChunk, "title" | "estimated_minutes">) {
-  await delay(160);
-  const task = db.tasks.find((item) => item.id === taskId);
+  const task = await getTask(taskId);
+  const nextOrderIndex = task.chunks.reduce((max, chunk) => Math.max(max, chunk.order_index), 0) + 1;
 
-  if (!task) {
-    throw new Error("Task not found");
-  }
+  await apiRequest<TaskChunk>(`/tasks/${taskId}/chunks`, {
+    method: "POST",
+    body: {
+      title: input.title,
+      estimated_minutes: input.estimated_minutes,
+      order_index: nextOrderIndex,
+    },
+  });
 
-  const chunk: TaskChunk = {
-    id: crypto.randomUUID(),
-    task_id: taskId,
-    title: input.title,
-    estimated_minutes: input.estimated_minutes,
-    actual_minutes: null,
-    xp_earned: 0,
-    status: "PENDING",
-    order_index: task.chunks.length + 1,
-    completed_at: null,
-    created_at: new Date().toISOString(),
-    updated_at: new Date().toISOString(),
-  };
-
-  task.chunks.push(chunk);
-  recalculateTask(task);
-  return cloneTask(task);
+  return getTask(taskId);
 }
 
 export async function updateChunk(taskId: string, chunkId: string, patch: Partial<TaskChunk>) {
-  await delay(150);
-  const task = db.tasks.find((item) => item.id === taskId);
-  const chunk = task?.chunks.find((item) => item.id === chunkId);
+  const task = await getTask(taskId);
+  const chunk = task.chunks.find((item) => item.id === chunkId);
 
-  if (!task || !chunk) {
+  if (!chunk) {
     throw new Error("Chunk not found");
   }
 
-  Object.assign(chunk, patch, { updated_at: new Date().toISOString() });
-  recalculateTask(task);
-  return cloneTask(task);
+  await apiRequest<TaskChunk>(`/tasks/${taskId}/chunks/${chunkId}`, {
+    method: "PATCH",
+    body: {
+      title: patch.title ?? chunk.title,
+      estimated_minutes: patch.estimated_minutes ?? chunk.estimated_minutes,
+      actual_minutes: patch.actual_minutes ?? chunk.actual_minutes,
+      order_index: patch.order_index ?? chunk.order_index,
+    },
+  });
+
+  return getTask(taskId);
 }
 
 export async function completeChunk(taskId: string, chunkId: string) {
-  await delay(150);
-  const task = db.tasks.find((item) => item.id === taskId);
-  const chunk = task?.chunks.find((item) => item.id === chunkId);
+  const task = await getTask(taskId);
+  const chunk = task.chunks.find((item) => item.id === chunkId);
 
-  if (!task || !chunk) {
+  if (!chunk) {
     throw new Error("Chunk not found");
   }
 
-  if (chunk.status !== "DONE") {
-    chunk.status = "DONE";
-    chunk.actual_minutes = chunk.estimated_minutes;
-    chunk.completed_at = new Date().toISOString();
-    chunk.updated_at = new Date().toISOString();
-    chunk.xp_earned = Math.max(6, task.importance_score * 3 + Math.round(chunk.estimated_minutes / 10));
-    db.user.total_xp += chunk.xp_earned;
-    db.xpLogs.unshift({
-      id: crypto.randomUUID(),
-      user_id: task.user_id,
-      source_type: "TASK_CHUNK",
-      source_id: chunk.id,
-      xp_delta: chunk.xp_earned,
-      reason: `Finished ${chunk.title}`,
-      created_at: new Date().toISOString(),
-    });
-  }
+  const actualMinutes = chunk.actual_minutes ?? chunk.estimated_minutes;
 
-  recalculateTask(task);
-
-  let xp_delta = chunk.xp_earned;
-
-  if (task.status === "DONE" && !db.xpLogs.some((log) => log.source_type === "BONUS" && log.source_id === task.id)) {
-    const bonus = Math.max(10, task.importance_score * 5);
-    db.user.total_xp += bonus;
-    db.xpLogs.unshift({
-      id: crypto.randomUUID(),
-      user_id: task.user_id,
-      source_type: "BONUS",
-      source_id: task.id,
-      xp_delta: bonus,
-      reason: `Task completion bonus for ${task.title}`,
-      created_at: new Date().toISOString(),
-    });
-    xp_delta += bonus;
-  }
-
-  return { task: cloneTask(task), xp_delta };
+  return getXpDelta(() =>
+    apiRequest<Task>(`/tasks/${taskId}/chunks/${chunkId}/done?actual_minutes=${encodeURIComponent(String(actualMinutes))}`, {
+      method: "POST",
+    }),
+  );
 }
 
 export async function deleteChunk(taskId: string, chunkId: string) {
-  await delay(150);
-  const task = db.tasks.find((item) => item.id === taskId);
+  await apiRequest<{ message: string }>(`/tasks/${taskId}/chunks/${chunkId}`, {
+    method: "DELETE",
+  });
 
-  if (!task) {
-    throw new Error("Task not found");
-  }
-
-  task.chunks = task.chunks.filter((chunk) => chunk.id !== chunkId);
-  recalculateTask(task);
-  return cloneTask(task);
+  return getTask(taskId);
 }

@@ -8,7 +8,9 @@ import type {
   User,
   XPLog,
 } from "@/types/models";
-import { ACTIVE_DATE, DEMO_USER_ID } from "@/lib/session";
+import { ACTIVE_DATE } from "@/lib/session";
+
+const DEMO_USER_ID = "demo-user";
 
 const createdAt = "2026-03-18T06:00:00Z";
 const updatedAt = "2026-03-18T09:30:00Z";

@@ -1,4 +1,4 @@
-import { ArrowRight, Clock3, Sparkles } from "lucide-react";
+import { ArrowRight, Clock3, Pencil, Sparkles, Trash2 } from "lucide-react";
 import { Link } from "react-router-dom";
 import { motion } from "framer-motion";
 import type { Task } from "@/types/models";
@@ -8,6 +8,8 @@ import { cn } from "@/lib/utils";
 interface TaskCardProps {
   task: Task;
   onToggle: () => void;
+  onEdit?: () => void;
+  onDelete?: () => void;
 }
 
 function typeColor(type: Task["type"]) {
@@ -23,8 +25,9 @@ function typeColor(type: Task["type"]) {
   }
 }
 
-export function TaskCard({ task, onToggle }: TaskCardProps) {
+export function TaskCard({ task, onToggle, onEdit, onDelete }: TaskCardProps) {
   const earnedXp = task.chunks.reduce((sum, chunk) => sum + chunk.xp_earned, 0);
+  const canToggle = task.status !== "DONE";
 
   return (
     <motion.div
@@ -34,7 +37,7 @@ export function TaskCard({ task, onToggle }: TaskCardProps) {
       className={cn("panel p-5 transition duration-300", task.status === "DONE" && "border-white/0 bg-card/70")}
     >
       <div className="flex items-start gap-4">
-        <AnimatedCheckbox checked={task.status === "DONE"} onChange={onToggle} />
+        <AnimatedCheckbox checked={task.status === "DONE"} onChange={onToggle} disabled={!canToggle} />
 
         <div className="min-w-0 flex-1">
           <div className="mb-3 flex flex-wrap items-start justify-between gap-4">
@@ -54,13 +57,33 @@ export function TaskCard({ task, onToggle }: TaskCardProps) {
               <p className="mt-2 text-sm text-text-secondary">{task.description}</p>
             </div>
 
-            <Link
-              to={`/tasks/${task.id}`}
-              className="inline-flex items-center gap-2 rounded-xl border border-white/10 px-3 py-2 text-sm text-text-secondary transition hover:bg-elevated hover:text-text-primary"
-            >
-              Details
-              <ArrowRight className="h-4 w-4" />
-            </Link>
+            <div className="flex items-center gap-2">
+              {onEdit ? (
+                <button
+                  type="button"
+                  onClick={onEdit}
+                  className="rounded-xl border border-white/10 p-2 text-text-secondary transition-all duration-200 ease-out hover:bg-elevated hover:text-text-primary"
+                >
+                  <Pencil className="h-4 w-4" />
+                </button>
+              ) : null}
+              {onDelete ? (
+                <button
+                  type="button"
+                  onClick={onDelete}
+                  className="rounded-xl border border-danger/20 p-2 text-danger transition-all duration-200 ease-out hover:bg-danger/10"
+                >
+                  <Trash2 className="h-4 w-4" />
+                </button>
+              ) : null}
+              <Link
+                to={`/tasks/${task.id}`}
+                className="inline-flex items-center gap-2 rounded-xl border border-white/10 px-3 py-2 text-sm text-text-secondary transition hover:bg-elevated hover:text-text-primary"
+              >
+                Details
+                <ArrowRight className="h-4 w-4" />
+              </Link>
+            </div>
           </div>
 
           <div className="flex flex-wrap items-center gap-4 text-sm text-text-secondary">

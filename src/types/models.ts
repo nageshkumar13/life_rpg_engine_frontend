@@ -17,6 +17,12 @@ export interface User {
   updated_at: string;
 }
 
+export interface AuthResponse {
+  access_token: string;
+  token_type: string;
+  user: User;
+}
+
 export interface TaskChunk {
   id: string;
   task_id: string;
@@ -49,6 +55,18 @@ export interface Task {
   chunks: TaskChunk[];
 }
 
+export interface HabitLog {
+  id: string;
+  habit_id: string;
+  user_id: string;
+  log_date: string;
+  actual_minutes: number;
+  xp_earned: number;
+  status: HabitLogStatus;
+  streak_after_log: number;
+  created_at: string;
+}
+
 export interface Habit {
   id: string;
   user_id: string;
@@ -60,18 +78,7 @@ export interface Habit {
   is_active: boolean;
   created_at: string;
   updated_at: string;
-}
-
-export interface HabitLog {
-  id: string;
-  habit_id: string;
-  user_id: string;
-  log_date: string;
-  actual_minutes: number;
-  xp_earned: number;
-  status: HabitLogStatus;
-  streak_after_log: number;
-  created_at: string;
+  logs?: HabitLog[];
 }
 
 export interface BacklogTask {
@@ -159,6 +166,23 @@ export interface TodayStats {
   focus_minutes: number;
   today_xp: number;
   daily_completion_ratio: number;
+  completed_tracked_count: number;
+  total_tracked_count: number;
+}
+
+export interface TaskDayGroup {
+  date: string;
+  tasks: Task[];
+  total_count: number;
+  completed_count: number;
+  remaining_count: number;
+}
+
+export interface ScheduleWindow {
+  overdue: Task[];
+  missed: Task[];
+  day_groups: TaskDayGroup[];
+  scheduled_later_count: number;
 }
 
 export interface TodayPayload {
@@ -167,6 +191,7 @@ export interface TodayPayload {
   unplanned_tasks: Task[];
   habit_items: HabitBoardItem[];
   completed_tasks: Task[];
+  schedule_window: ScheduleWindow;
 }
 
 export interface ProfileSummary {

@@ -8,6 +8,7 @@ interface XPBarProps {
 
 export function XPBar({ level, currentXp, nextLevelXp }: XPBarProps) {
   const progress = levelProgress(currentXp, nextLevelXp);
+  const safeCurrentXp = Math.max(0, currentXp);
 
   return (
     <div className="panel p-5">
@@ -16,7 +17,7 @@ export function XPBar({ level, currentXp, nextLevelXp }: XPBarProps) {
           <p className="text-xs uppercase tracking-[0.28em] text-text-muted">Level</p>
           <div className="mt-1 flex items-end gap-3">
             <span className="text-3xl font-bold">{level}</span>
-            <span className="mb-1 text-sm text-text-secondary">{currentXp} / {nextLevelXp} XP</span>
+            <span className="mb-1 text-sm text-text-secondary">{safeCurrentXp} / {nextLevelXp} XP</span>
           </div>
         </div>
         <div className="rounded-2xl border border-xp/20 bg-xp/10 px-3 py-2 text-sm font-semibold text-xp shadow-xp">

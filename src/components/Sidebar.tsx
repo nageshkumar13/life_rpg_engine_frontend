@@ -1,6 +1,8 @@
 import { Activity, BarChart3, Clock3, ListTodo, Sparkles, UserCircle2 } from "lucide-react";
-import { NavLink } from "react-router-dom";
+import { useQueryClient } from "@tanstack/react-query";
+import { NavLink, useNavigate } from "react-router-dom";
 import { cn } from "@/lib/utils";
+import { useAuthStore } from "@/store/auth-store";
 
 const links = [
   { to: "/today", label: "Today", icon: Clock3 },
@@ -16,6 +18,18 @@ interface SidebarProps {
 }
 
 export function Sidebar({ mobile = false, onNavigate }: SidebarProps) {
+  const navigate = useNavigate();
+  const queryClient = useQueryClient();
+  const user = useAuthStore((state) => state.user);
+  const clearSession = useAuthStore((state) => state.clearSession);
+
+  const handleLogout = () => {
+    clearSession();
+    queryClient.clear();
+    onNavigate?.();
+    navigate("/", { replace: true });
+  };
+
   return (
     <aside className={cn("flex w-72 flex-col border-r border-white/5 bg-black/15 px-5 py-6", !mobile && "hidden lg:flex")}>
       <div className="mb-10 flex items-center gap-3">
@@ -46,6 +60,18 @@ export function Sidebar({ mobile = false, onNavigate }: SidebarProps) {
           </NavLink>
         ))}
       </nav>
+
+      <div className="mb-4 rounded-3xl border border-white/6 bg-white/[0.03] p-4">
+        <p className="text-xs uppercase tracking-[0.24em] text-text-muted">Session</p>
+        <p className="mt-3 text-sm font-semibold text-text-primary">{user?.email ?? "Signed in"}</p>
+        <button
+          type="button"
+          onClick={handleLogout}
+          className="mt-4 w-full rounded-2xl border border-white/10 bg-black/20 px-4 py-2.5 text-sm font-semibold text-text-secondary transition hover:bg-white/[0.06] hover:text-text-primary"
+        >
+          Log out
+        </button>
+      </div>
 
       <div className="rounded-3xl border border-primary/10 bg-primary/10 p-4">
         <p className="text-sm font-semibold">Momentum</p>

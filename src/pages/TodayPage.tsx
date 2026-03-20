@@ -5,26 +5,56 @@ import { FloatingQuickAdd } from "@/components/FloatingQuickAdd";
 import { HabitCard } from "@/components/HabitCard";
 import { LoadingSkeleton } from "@/components/LoadingSkeleton";
 import { PageHeader } from "@/components/PageHeader";
+import { QueryErrorState } from "@/components/QueryErrorState";
 import { StreakBadge } from "@/components/StreakBadge";
 import { TaskCard } from "@/components/TaskCard";
+import { TaskTimelinePanel } from "@/components/TaskTimelinePanel";
 import { XPBar } from "@/components/XPBar";
-import { useToggleHabitMutation } from "@/features/habits/queries";
-import { useAdvanceTaskMutation, useTodayQuery } from "@/features/tasks/queries";
+import { useDeleteHabitMutation, useToggleHabitMutation } from "@/features/habits/queries";
+import { useAdvanceTaskMutation, useDeleteTaskMutation, useTodayQuery } from "@/features/tasks/queries";
 import { formatLongDate } from "@/lib/utils";
 import { useUiStore } from "@/store/ui-store";
 
 export function TodayPage() {
-  const { data, isLoading } = useTodayQuery();
+  const { data, error, isError, isLoading } = useTodayQuery();
   const [showCompleted, setShowCompleted] = useState(false);
   const advanceTask = useAdvanceTaskMutation();
   const toggleHabit = useToggleHabitMutation();
+  const deleteTask = useDeleteTaskMutation();
+  const deleteHabit = useDeleteHabitMutation();
   const pushXpToast = useUiStore((state) => state.pushXpToast);
+  const openTaskEditor = useUiStore((state) => state.openTaskEditor);
+  const openHabitEditor = useUiStore((state) => state.openHabitEditor);
 
-  if (isLoading || !data) {
+  if (isLoading) {
     return <LoadingSkeleton />;
   }
 
+  if (isError) {
+    return <QueryErrorState title="Today could not load" error={error} />;
+  }
+
+  if (!data) {
+    return <QueryErrorState title="Today could not load" error={new Error("The today response was empty.")} />;
+  }
+
   const completion = Math.round(data.stats.daily_completion_ratio * 100);
+
+  const handleDeleteTask = async (taskId: string, title: string) => {
+    if (!window.confirm(`Delete task "${title}"?`)) {
+      return;
+    }
+
+    await deleteTask.mutateAsync(taskId);
+  };
+
+  const handleDeleteHabit = async (habitId: string, title: string) => {
+    if (!window.confirm(`Delete habit "${title}"? This will remove its logs too.`)) {
+      return;
+    }
+
+    await deleteHabit.mutateAsync(habitId);
+  };
 
   return (
     <>
@@ -41,12 +71,17 @@ export function TodayPage() {
             <div className="panel p-5">
               <p className="text-xs uppercase tracking-[0.28em] text-text-muted">Daily completion</p>
               <p className="mt-3 text-4xl font-bold">{completion}%</p>
+              <p className="mt-2 text-sm text-text-secondary">
+                {data.stats.total_tracked_count
+                  ? `${data.stats.completed_tracked_count} of ${data.stats.total_tracked_count} tracked items completed today`
+                  : "Nothing tracked for today yet"}
+              </p>
               <div className="mt-4 h-2 rounded-full bg-white/5">
                 <div className="h-full rounded-full bg-primary transition-all duration-700" style={{ width: `${completion}%` }} />
               </div>
             </div>
             <div className="panel p-5">
-              <p className="text-xs uppercase tracking-[0.28em] text-text-muted">Focus minutes</p>
+              <p className="text-xs uppercase tracking-[0.28em] text-text-muted">Habit minutes</p>
               <p className="mt-3 text-4xl font-bold">{data.stats.focus_minutes}</p>
               <p className="mt-2 text-sm text-text-secondary">Derived from completed habit logs for the selected day</p>
             </div>
@@ -79,6 +114,10 @@ export function TodayPage() {
                 <TaskCard
                   key={task.id}
                   task={task}
+                  onEdit={() => openTaskEditor(task)}
+                  onDelete={() => {
+                    void handleDeleteTask(task.id, task.title);
+                  }}
                   onToggle={async () => {
                     const result = await advanceTask.mutateAsync(task.id);
                     if (result.xp_delta) {
@@ -88,7 +127,14 @@ export function TodayPage() {
                 />
               ))
             ) : (
-              <EmptyState title="No planned tasks" description="The backend has no active planned work assigned to this day yet." />
+              <EmptyState
+                title={data.completed_tasks.length ? "No open planned tasks" : "No planned tasks"}
+                description={
+                  data.completed_tasks.length
+                    ? `Open work is clear for today. ${data.completed_tasks.length} task${data.completed_tasks.length === 1 ? "" : "s"} already moved to completed.`
+                    : "The backend has no active planned work assigned to this day yet."
+                }
+              />
             )}
           </section>
 
@@ -103,6 +149,10 @@ export function TodayPage() {
                 <HabitCard
                   key={item.habit.id}
                   item={item}
+                  onEdit={() => openHabitEditor(item.habit)}
+                  onDelete={() => {
+                    void handleDeleteHabit(item.habit.id, item.habit.title);
+                  }}
                   onToggle={async () => {
                     const result = await toggleHabit.mutateAsync(item.habit.id);
                     if (result.xp_delta) {
@@ -124,6 +174,10 @@ export function TodayPage() {
                 <TaskCard
                   key={task.id}
                   task={task}
+                  onEdit={() => openTaskEditor(task)}
+                  onDelete={() => {
+                    void handleDeleteTask(task.id, task.title);
+                  }}
                   onToggle={async () => {
                     const result = await advanceTask.mutateAsync(task.id);
                     if (result.xp_delta) {
@@ -134,6 +188,8 @@ export function TodayPage() {
               ))}
             </section>
           ) : null}
+
+          <TaskTimelinePanel scheduleWindow={data.schedule_window} today={data.stats.date} />
 
           <section className="space-y-4">
             <button
@@ -150,7 +206,17 @@ export function TodayPage() {
 
             {showCompleted ? (
               data.completed_tasks.length ? (
-                data.completed_tasks.map((task) => <TaskCard key={task.id} task={task} onToggle={() => undefined} />)
+                data.completed_tasks.map((task) => (
+                  <TaskCard
+                    key={task.id}
+                    task={task}
+                    onEdit={() => openTaskEditor(task)}
+                    onDelete={() => {
+                      void handleDeleteTask(task.id, task.title);
+                    }}
+                    onToggle={() => undefined}
+                  />
+                ))
               ) : (
                 <EmptyState title="Nothing completed yet" description="Once a task reaches DONE it lands here for the victory lap." />
               )

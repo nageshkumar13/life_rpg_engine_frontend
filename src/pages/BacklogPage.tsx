@@ -1,16 +1,23 @@
 import { BacklogCard } from "@/components/BacklogCard";
 import { LoadingSkeleton } from "@/components/LoadingSkeleton";
 import { PageHeader } from "@/components/PageHeader";
+import { QueryErrorState } from "@/components/QueryErrorState";
 import { useAssignBacklogMutation, useBacklogQuery } from "@/features/backlog/queries";
-import { useUiStore } from "@/store/ui-store";
 
 export function BacklogPage() {
-  const { data, isLoading } = useBacklogQuery();
+  const { data, error, isError, isLoading } = useBacklogQuery();
   const assignMutation = useAssignBacklogMutation();
-  const pushXpToast = useUiStore((state) => state.pushXpToast);
 
-  if (isLoading || !data) {
+  if (isLoading) {
     return <LoadingSkeleton />;
+  }
+
+  if (isError) {
+    return <QueryErrorState title="Backlog could not load" error={error} />;
+  }
+
+  if (!data) {
+    return <QueryErrorState title="Backlog could not load" error={new Error("The backlog response was empty.")} />;
   }
 
   return (
@@ -26,8 +33,7 @@ export function BacklogPage() {
             key={item.id}
             item={item}
             onAssign={async () => {
-              const result = await assignMutation.mutateAsync(item.id);
-              pushXpToast(result.backlog.xp_reward);
+              await assignMutation.mutateAsync(item.id);
             }}
           />
         ))}

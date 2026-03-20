@@ -5,15 +5,20 @@ import { cn } from "@/lib/utils";
 interface AnimatedCheckboxProps {
   checked: boolean;
   onChange: () => void;
+  disabled?: boolean;
 }
 
-export function AnimatedCheckbox({ checked, onChange }: AnimatedCheckboxProps) {
+export function AnimatedCheckbox({ checked, onChange, disabled = false }: AnimatedCheckboxProps) {
   return (
     <button
       type="button"
       onClick={onChange}
+      disabled={disabled}
       className={cn(
-        "flex h-6 w-6 items-center justify-center rounded-xl border transition",
+        "flex h-6 w-6 items-center justify-center rounded-xl border transition-all duration-200 ease-out",
+        disabled
+          ? "pointer-events-none cursor-not-allowed opacity-70 shadow-none"
+          : "hover:border-white/20 hover:bg-white/[0.08]",
         checked ? "border-xp bg-xp/20 text-xp shadow-xp" : "border-white/10 bg-white/5 text-transparent",
       )}
       aria-pressed={checked}

@@ -17,6 +17,8 @@ export function useAssignBacklogMutation() {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: todayQueryKey });
       queryClient.invalidateQueries({ queryKey: ["backlog"] });
+      queryClient.invalidateQueries({ queryKey: ["profile"] });
+      queryClient.invalidateQueries({ queryKey: ["analytics"] });
     },
   });
 }

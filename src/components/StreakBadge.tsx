@@ -13,7 +13,7 @@ export function StreakBadge({ streak, label = "Current streak" }: StreakBadgePro
       </div>
       <div>
         <p className="text-xs uppercase tracking-[0.24em] text-streak/80">{label}</p>
-        <p className="text-lg font-semibold text-text-primary">{streak} days</p>
+        <p className="text-lg font-semibold text-text-primary">{streak}</p>
       </div>
     </div>
   );

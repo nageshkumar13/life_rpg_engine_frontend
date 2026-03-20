@@ -3,18 +3,23 @@ import { ChunkList } from "@/components/ChunkList";
 import { EmptyState } from "@/components/EmptyState";
 import { LoadingSkeleton } from "@/components/LoadingSkeleton";
 import { PageHeader } from "@/components/PageHeader";
+import { QueryErrorState } from "@/components/QueryErrorState";
 import { useChunkMutations, useTaskQuery } from "@/features/tasks/queries";
 import { useUiStore } from "@/store/ui-store";
 
 export function TaskDetailPage() {
   const params = useParams();
   const taskId = params.id ?? "";
-  const { data: task, isLoading } = useTaskQuery(taskId);
+  const { data: task, error, isError, isLoading } = useTaskQuery(taskId);
   const chunkMutations = useChunkMutations(taskId);
   const pushXpToast = useUiStore((state) => state.pushXpToast);
 
   if (isLoading) {
     return <LoadingSkeleton />;
+  }
+
+  if (isError) {
+    return <QueryErrorState title="Task details could not load" error={error} />;
   }
 
   if (!task) {

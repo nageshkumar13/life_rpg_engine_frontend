@@ -4,10 +4,12 @@ import {
   addTask,
   advanceTask,
   completeChunk,
+  deleteTask,
   deleteChunk,
   getTask,
   getToday,
   updateChunk,
+  updateTask,
 } from "@/api/tasks";
 
 export const todayQueryKey = ["today"];
@@ -30,10 +32,17 @@ export function useTaskQuery(taskId: string) {
 export function useAdvanceTaskMutation() {
   const queryClient = useQueryClient();
 
+  const invalidate = (taskId: string) => {
+    queryClient.invalidateQueries({ queryKey: todayQueryKey });
+    queryClient.invalidateQueries({ queryKey: ["task", taskId] });
+    queryClient.invalidateQueries({ queryKey: ["profile"] });
+    queryClient.invalidateQueries({ queryKey: ["analytics"] });
+  };
+
   return useMutation({
     mutationFn: advanceTask,
     onSuccess: ({ task }) => {
-      queryClient.invalidateQueries({ queryKey: todayQueryKey });
+      invalidate(task.id);
       queryClient.setQueryData(["task", task.id], task);
     },
   });
@@ -46,6 +55,39 @@ export function useAddTaskMutation() {
     mutationFn: addTask,
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: todayQueryKey });
+      queryClient.invalidateQueries({ queryKey: ["profile"] });
+      queryClient.invalidateQueries({ queryKey: ["analytics"] });
+    },
+  });
+}
+
+export function useUpdateTaskMutation() {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: (input: {
+      taskId: string;
+      patch: { title: string; description: string; estimated_minutes_total: number; assigned_day: string };
+    }) => updateTask(input.taskId, input.patch),
+    onSuccess: (task) => {
+      queryClient.invalidateQueries({ queryKey: todayQueryKey });
+      queryClient.invalidateQueries({ queryKey: ["task", task.id] });
+      queryClient.invalidateQueries({ queryKey: ["profile"] });
+      queryClient.invalidateQueries({ queryKey: ["analytics"] });
+    },
+  });
+}
+
+export function useDeleteTaskMutation() {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: deleteTask,
+    onSuccess: (taskId) => {
+      queryClient.invalidateQueries({ queryKey: todayQueryKey });
+      queryClient.removeQueries({ queryKey: ["task", taskId] });
+      queryClient.invalidateQueries({ queryKey: ["profile"] });
+      queryClient.invalidateQueries({ queryKey: ["analytics"] });
     },
   });
 }
@@ -56,6 +98,8 @@ export function useChunkMutations(taskId: string) {
   const invalidate = (updatedTaskId: string) => {
     queryClient.invalidateQueries({ queryKey: todayQueryKey });
     queryClient.invalidateQueries({ queryKey: ["task", updatedTaskId] });
+    queryClient.invalidateQueries({ queryKey: ["profile"] });
+    queryClient.invalidateQueries({ queryKey: ["analytics"] });
   };
 
   return {

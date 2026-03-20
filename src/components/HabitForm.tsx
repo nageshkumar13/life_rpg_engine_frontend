@@ -2,13 +2,19 @@ import { Sparkles } from "lucide-react";
 import { useState } from "react";
 
 interface HabitFormProps {
+  initialValues?: {
+    title: string;
+    description: string;
+    target_minutes: number;
+  };
+  submitLabel?: string;
   onSubmit: (input: { title: string; description: string; target_minutes: number }) => void;
 }
 
-export function HabitForm({ onSubmit }: HabitFormProps) {
-  const [title, setTitle] = useState("");
-  const [description, setDescription] = useState("");
-  const [targetMinutes, setTargetMinutes] = useState("20");
+export function HabitForm({ initialValues, submitLabel = "Save habit", onSubmit }: HabitFormProps) {
+  const [title, setTitle] = useState(initialValues?.title ?? "");
+  const [description, setDescription] = useState(initialValues?.description ?? "");
+  const [targetMinutes, setTargetMinutes] = useState(String(initialValues?.target_minutes ?? 20));
 
   return (
     <form
@@ -55,7 +61,7 @@ export function HabitForm({ onSubmit }: HabitFormProps) {
       </div>
       <button type="submit" className="flex w-full items-center justify-center gap-2 rounded-2xl bg-primary px-4 py-3 font-semibold text-white transition hover:bg-primary/90">
         <Sparkles className="h-4 w-4" />
-        Save habit
+        {submitLabel}
       </button>
     </form>
   );

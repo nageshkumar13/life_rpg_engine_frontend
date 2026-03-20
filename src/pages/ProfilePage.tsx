@@ -1,17 +1,26 @@
 import { LoadingSkeleton } from "@/components/LoadingSkeleton";
 import { PageHeader } from "@/components/PageHeader";
+import { QueryErrorState } from "@/components/QueryErrorState";
 import { StreakBadge } from "@/components/StreakBadge";
 import { XPBar } from "@/components/XPBar";
 import { useProfileQuery } from "@/features/analytics/queries";
 
 export function ProfilePage() {
-  const { data, isLoading } = useProfileQuery();
+  const { data, error, isError, isLoading } = useProfileQuery();
 
-  if (isLoading || !data) {
+  if (isLoading) {
     return <LoadingSkeleton />;
   }
 
-  const currentLevelFloor = Math.max(0, (data.user.level - 1) * 160);
+  if (isError) {
+    return <QueryErrorState title="Profile is unavailable" error={error} />;
+  }
+
+  if (!data) {
+    return <QueryErrorState title="Profile is unavailable" error={new Error("The profile response was empty.")} />;
+  }
+
+  const currentLevelFloor = Math.max(0, (data.user.level - 1) * 100);
   const currentXp = data.user.total_xp - currentLevelFloor;
 
   return (
@@ -25,7 +34,7 @@ export function ProfilePage() {
 
       <div className="grid gap-4 xl:grid-cols-[1.2fr_0.8fr]">
         <div className="space-y-4">
-          <XPBar level={data.user.level} currentXp={currentXp} nextLevelXp={160} />
+          <XPBar level={data.user.level} currentXp={currentXp} nextLevelXp={100} />
           <div className="grid gap-4 md:grid-cols-2">
             <div className="panel p-5">
               <p className="text-xs uppercase tracking-[0.28em] text-text-muted">Total XP</p>
@@ -54,7 +63,7 @@ export function ProfilePage() {
               <span className="font-semibold">{data.total_tasks_today}</span>
             </div>
             <div className="flex items-center justify-between rounded-2xl bg-white/[0.03] px-4 py-3">
-              <span className="text-sm text-text-secondary">Today focus minutes</span>
+              <span className="text-sm text-text-secondary">Today habit minutes</span>
               <span className="font-semibold">{data.today_focus_minutes}</span>
             </div>
             <div className="flex items-center justify-between rounded-2xl bg-white/[0.03] px-4 py-3">

@@ -4,9 +4,6 @@ import {
   Bar,
   BarChart,
   CartesianGrid,
-  Cell,
-  Pie,
-  PieChart,
   ResponsiveContainer,
   Tooltip,
   XAxis,
@@ -15,19 +12,26 @@ import {
 import { ChartCard } from "@/components/ChartCard";
 import { LoadingSkeleton } from "@/components/LoadingSkeleton";
 import { PageHeader } from "@/components/PageHeader";
+import { QueryErrorState } from "@/components/QueryErrorState";
 import { useAnalyticsQuery } from "@/features/analytics/queries";
 
 export function AnalyticsPage() {
-  const { data, isLoading } = useAnalyticsQuery();
+  const { data, error, isError, isLoading } = useAnalyticsQuery();
 
-  if (isLoading || !data) {
+  if (isLoading) {
     return <LoadingSkeleton />;
   }
 
-  const ratioData = [
-    { name: "Planned", value: Math.round(data.planned_completion_ratio * 100), fill: "#3B82F6" },
-    { name: "Unplanned", value: Math.round(data.unplanned_completion_ratio * 100), fill: "#EF4444" },
-  ];
+  if (isError) {
+    return <QueryErrorState title="Analytics are unavailable" error={error} />;
+  }
+
+  if (!data) {
+    return <QueryErrorState title="Analytics are unavailable" error={new Error("The analytics response was empty.")} />;
+  }
+
+  const plannedCompletion = Math.round(data.planned_completion_ratio * 100);
+  const unplannedCompletion = Math.round(data.unplanned_completion_ratio * 100);
 
   return (
     <>
@@ -69,17 +73,31 @@ export function AnalyticsPage() {
           </ResponsiveContainer>
         </ChartCard>
 
-        <ChartCard title="Completion ratios" description="Planned versus unplanned completion rates from the analytics service.">
-          <ResponsiveContainer width="100%" height="100%">
-            <PieChart>
-              <Tooltip contentStyle={{ background: "#111827", border: "1px solid rgba(255,255,255,0.08)" }} />
-              <Pie data={ratioData} dataKey="value" innerRadius={70} outerRadius={110} paddingAngle={4}>
-                {ratioData.map((entry) => (
-                  <Cell key={entry.name} fill={entry.fill} />
-                ))}
-              </Pie>
-            </PieChart>
-          </ResponsiveContainer>
+        <ChartCard
+          title="Completion rates"
+          description="These are separate backend rates, not slices of one whole. Planned and unplanned work each use their own denominator."
+        >
+          <div className="space-y-6 px-2 py-4">
+            <div>
+              <div className="mb-2 flex items-center justify-between">
+                <span className="text-sm font-medium text-text-secondary">Planned tasks</span>
+                <span className="text-sm font-semibold text-info">{plannedCompletion}%</span>
+              </div>
+              <div className="h-3 rounded-full bg-white/5">
+                <div className="h-full rounded-full bg-info transition-all duration-700" style={{ width: `${plannedCompletion}%` }} />
+              </div>
+            </div>
+
+            <div>
+              <div className="mb-2 flex items-center justify-between">
+                <span className="text-sm font-medium text-text-secondary">Unplanned tasks</span>
+                <span className="text-sm font-semibold text-danger">{unplannedCompletion}%</span>
+              </div>
+              <div className="h-3 rounded-full bg-white/5">
+                <div className="h-full rounded-full bg-danger transition-all duration-700" style={{ width: `${unplannedCompletion}%` }} />
+              </div>
+            </div>
+          </div>
         </ChartCard>
 
         <ChartCard title="Task completion trend" description="Completed task count by day.">
